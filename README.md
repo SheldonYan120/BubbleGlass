@@ -60,17 +60,7 @@ build.bat
 
 产出 `BubbleGlass.exe`，也可以直接从 [Releases](../../releases) 下载。
 
-`build.bat` 只依赖 .NET Framework 的编译器。它会在编译前顺手跑一次
-`tools/preflight.py`（查括号配平与 CS0136/CS0128 这类名称作用域错误）；
-**这一步是可选的**——没装 Python，或者 `python` 指向微软商店的占位程序时，
-脚本会打印 `[preflight] skipped` 继续编译，不会因为少一个 Python 而失败。
-想手动跑：
-
-```bat
-python tools\preflight.py BubbleGlass.cs
-```
-
-退出码 `0` 干净、`1` 有问题、`2` 读不到文件、`3` 脚本自身出错。
+仓库里只有一个源文件和一条编译命令，除此之外没有构建系统、没有包依赖。
 
 ## 使用
 
