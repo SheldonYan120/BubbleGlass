@@ -1,0 +1,3 @@
+# Chinese .bat files are GBK-encoded with CRLF line endings.
+# Any autocrlf/text conversion would corrupt them, so disable it globally.
+* -text

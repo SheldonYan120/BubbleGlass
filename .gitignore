@@ -1,0 +1,14 @@
+# build output
+*.exe
+*.scr
+BubbleGlass-frame.png
+
+# local experiment scripts (offline parameter rendering / perf probes)
+.preview/
+
+# editor / os
+.vs/
+*.user
+*.suo
+Thumbs.db
+desktop.ini
