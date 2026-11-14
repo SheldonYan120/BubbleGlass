@@ -6,13 +6,37 @@ set "CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if not exist "%CSC%" set "CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe"
 if not exist "%CSC%" goto nocsc
 
-rem Name/scope sanity check. Optional: skipped when python is not installed.
+rem ---------------------------------------------------------------------------
+rem Optional name/scope check. A python.exe that merely EXISTS is not enough:
+rem the Microsoft Store ships a stub that exits 49 with "Python was not found".
+rem So each candidate must actually run before it is trusted, and anything that
+rem is not a real finding (missing python, script error) must never stop a build.
+rem ---------------------------------------------------------------------------
 set "PY="
-where python >nul 2>nul && set "PY=python"
-if not defined PY goto compile
+py -c "import sys" >nul 2>nul
+if not errorlevel 1 set "PY=py"
+if defined PY goto precheck
+
+python -c "import sys" >nul 2>nul
+if not errorlevel 1 set "PY=python"
+if defined PY goto precheck
+
+python3 -c "import sys" >nul 2>nul
+if not errorlevel 1 set "PY=python3"
+if defined PY goto precheck
+
+echo [preflight] skipped - no working python found
+goto compile
+
+:precheck
 echo Preflight ...
 "%PY%" "tools\preflight.py" "BubbleGlass.cs"
+if errorlevel 2 goto preskip
 if errorlevel 1 goto preflightfail
+goto compile
+
+:preskip
+echo [preflight] could not run - continuing, the compiler is the final judge
 
 :compile
 echo Compiling ...
@@ -42,7 +66,7 @@ exit /b 1
 :preflightfail
 echo.
 echo  Preflight found problems - see the lines above.
-echo  They are the same errors the compiler would raise, just reported earlier.
+echo  These are the same errors the compiler would raise, just reported earlier.
 echo.
 pause
 exit /b 1

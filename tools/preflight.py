@@ -256,4 +256,12 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    # Exit codes: 0 clean, 1 findings, 2 cannot read, 3 this script broke.
+    # build.bat only treats 1 as fatal - anything else must not block a build.
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except Exception as exc:                      # noqa: BLE001
+        print('[preflight] internal error: %r' % (exc,))
+        sys.exit(3)
