@@ -94,6 +94,131 @@ namespace BubbleScr
             if (!GetLastInputInfo(ref li)) return 0;
             return unchecked(GetTickCount() - li.dwTime);
         }
+
+        /* ---- 是否「正在看东西」：看视频时不动鼠标是正常的，不该当作闲置 ---- */
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT { public int Left, Top, Right, Bottom; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public int dwFlags;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct CURSORINFO
+        {
+            public int cbSize;
+            public int flags;
+            public IntPtr hCursor;
+            public POINT pt;
+        }
+
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
+        [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hWnd, int flag);
+        [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr hMon, ref MONITORINFO mi);
+        [DllImport("user32.dll")] static extern bool GetCursorInfo(ref CURSORINFO ci);
+
+        /* WASAPI 峰值表：只问「默认输出设备上现在有没有声音」 */
+
+        [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
+        class MMDeviceEnumeratorClass { }
+
+        [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"),
+         InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IMMDeviceEnumerator
+        {
+            int EnumAudioEndpoints(int flow, int mask, out IntPtr devices);   // 占位，只为对齐 vtable
+            int GetDefaultAudioEndpoint(int flow, int role, out IMMDevice device);
+        }
+
+        [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"),
+         InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IMMDevice
+        {
+            int Activate(ref Guid iid, int ctx, IntPtr param,
+                         [MarshalAs(UnmanagedType.IUnknown)] out object iface);
+        }
+
+        [ComImport, Guid("C02216F6-8C67-4B5B-9D00-D008E73E0064"),
+         InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IAudioMeterInformation
+        {
+            int GetPeakValue(out float peak);
+        }
+
+        /// <summary>默认输出设备当前的峰值电平（0~1）。没声音时是 0</summary>
+        static float AudioPeak()
+        {
+            IMMDeviceEnumerator en = null;
+            IMMDevice dev = null;
+            object meter = null;
+            try
+            {
+                en = (IMMDeviceEnumerator)new MMDeviceEnumeratorClass();
+                if (en.GetDefaultAudioEndpoint(0, 0, out dev) != 0 || dev == null) return 0f;
+
+                Guid iid = typeof(IAudioMeterInformation).GUID;
+                if (dev.Activate(ref iid, 1, IntPtr.Zero, out meter) != 0 || meter == null) return 0f;
+
+                float peak;
+                if (((IAudioMeterInformation)meter).GetPeakValue(out peak) != 0) return 0f;
+                return peak;
+            }
+            catch { return 0f; }
+            finally
+            {
+                // 闲置时每秒查一次，不显式释放会一直堆到 GC 才发现，设备引用可能攒很久
+                if (meter != null) Marshal.ReleaseComObject(meter);
+                if (dev != null) Marshal.ReleaseComObject(dev);
+                if (en != null) Marshal.ReleaseComObject(en);
+            }
+        }
+
+        /// <summary>
+        /// 用户是不是正在看/听内容 —— 这种时候不动鼠标是正常的，不该当成闲置。
+        ///
+        /// 两条任一成立就算：
+        ///   1. 前台窗口铺满整个显示器，并且系统光标被隐藏。全屏播放器、全屏游戏都是这样，
+        ///      普通窗口哪怕最大化，光标还在，不会误判。
+        ///   2. 默认输出设备上有声音。窗口化看视频、听东西都会命中，这条专补「没全屏」的情况。
+        ///
+        /// 特意不用 SHQueryUserNotificationState 和 ES_DISPLAY_REQUIRED：
+        /// 前者把「全屏开着一个窗口、人已经走开」也算忙；后者是全系统聚合的，
+        /// 任何一个后台程序声明一次就长期为真 —— 那样气泡就再也不会自动出现了。
+        /// </summary>
+        public static bool BusyWatching()
+        {
+            try
+            {
+                IntPtr fg = GetForegroundWindow();
+                if (fg != IntPtr.Zero)
+                {
+                    RECT rc;
+                    MONITORINFO mi = new MONITORINFO();
+                    mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+                    if (GetWindowRect(fg, out rc) && GetMonitorInfo(MonitorFromWindow(fg, 2), ref mi))
+                    {
+                        bool covers = rc.Left <= mi.rcMonitor.Left && rc.Top <= mi.rcMonitor.Top
+                                   && rc.Right >= mi.rcMonitor.Right && rc.Bottom >= mi.rcMonitor.Bottom;
+                        if (covers)
+                        {
+                            CURSORINFO ci = new CURSORINFO();
+                            ci.cbSize = Marshal.SizeOf(typeof(CURSORINFO));
+                            if (GetCursorInfo(ref ci) && (ci.flags & 1) == 0) return true;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return AudioPeak() > 0.002f;
+        }
     }
 
     /// <summary>
@@ -1094,6 +1219,8 @@ namespace BubbleScr
         // 否则「闲置时间还很长」会立刻又触发一遍，变成死循环
         bool needInput;
         bool quitting;
+        // 上一次轮询时是否处于「正在看东西」的状态，只用来避免日志刷屏
+        bool heldByMedia;
 
         public TrayHost()
         {
@@ -1151,7 +1278,8 @@ namespace BubbleScr
             watch.Tick += OnWatch;
             watch.Start();
 
-            Dbg.W("tray start  idleMin=" + Settings.IdleMinutes + "  startup=" + IsStartup());
+            Dbg.W("tray start  idleMin=" + Settings.IdleMinutes + "  startup=" + IsStartup()
+                  + "  busyNow=" + Nat.BusyWatching());
 
             // 消息循环起来之后再提示，否则气球提示可能来不及显示
             System.Windows.Forms.Timer hello = new System.Windows.Forms.Timer();
@@ -1208,7 +1336,7 @@ namespace BubbleScr
         {
             int m = Settings.IdleMinutes;
             miAuto.Checked = m > 0;
-            miAuto.Text = m > 0 ? ("闲置 " + m + " 分钟后自动显示") : "闲置后自动显示（关闭）";
+            miAuto.Text = m > 0 ? ("闲置 " + m + " 分钟后自动显示（看视频时不弹）") : "闲置后自动显示（关闭）";
             miStartup.Checked = IsStartup();
         }
 
@@ -1257,11 +1385,26 @@ namespace BubbleScr
 
             if ((DateTime.Now - lastStart).TotalSeconds < 3) return;
 
-            if (idle >= (uint)m * 60000u)
+            if (idle < (uint)m * 60000u)
             {
-                Dbg.W("idle " + idle + "ms >= " + m + "min -> start");
-                StartOverlay();
+                heldByMedia = false;
+                return;
             }
+
+            // 到这里「很长时间没碰键鼠」已经成立，但看视频本来就是不动鼠标的。
+            // 全屏播放、全屏游戏、演示模式、或者有程序在阻止显示器休眠 —— 都说明
+            // 人还在看，不该弹气泡盖上去。等真正空闲了（信号消失）下一轮自然触发。
+            bool busy = Nat.BusyWatching();
+            if (busy != heldByMedia)
+            {
+                heldByMedia = busy;
+                Dbg.W(busy ? "idle reached but screen is busy (fullscreen / media) -> hold"
+                           : "screen no longer busy -> resume idle watch");
+            }
+            if (busy) return;
+
+            Dbg.W("idle " + idle + "ms >= " + m + "min -> start");
+            StartOverlay();
         }
 
         void StartOverlay()
