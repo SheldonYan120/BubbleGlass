@@ -3,14 +3,14 @@ setlocal
 cd /d "%~dp0"
 
 echo.
-echo  用当前设置渲染一帧，不开窗口、不打扰桌面。
+echo  Render one frame with the current settings - no window, nothing on screen.
 echo.
 if not exist "%~dp0BubbleGlass.exe" goto noexe
 
 "%~dp0BubbleGlass.exe" /x
 
 echo.
-echo  完成。图片和日志在：
+echo  Done. Output:
 echo    %%TEMP%%\BubbleGlass-frame.png
 echo    %%TEMP%%\BubbleGlass.log
 echo.
@@ -19,7 +19,7 @@ exit /b 0
 
 :noexe
 echo.
-echo  [X] 没找到 BubbleGlass.exe，请先运行 build.bat 编译。
+echo  [X] BubbleGlass.exe not found - run build.bat first.
 echo.
 pause
 exit /b 1
