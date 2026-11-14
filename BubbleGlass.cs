@@ -299,15 +299,15 @@ namespace BubbleScr
             {
                 Build();
             }
-            catch (Exception ex)
+            catch (Exception err)
             {
-                Dbg.W("BUILD FAILED: " + ex);
+                Dbg.W("BUILD FAILED: " + err);
                 throw;
             }
-            int ex = Nat.GetWindowLong(Handle, -20);
+            int exStyle = Nat.GetWindowLong(Handle, -20);
             Dbg.W("shown  " + w + "x" + h + "  bubbles=" + list.Count
-                  + "  layered=" + ((ex & WS_EX_LAYERED) != 0)
-                  + "  clickthrough=" + ((ex & WS_EX_TRANSPARENT) != 0));
+                  + "  layered=" + ((exStyle & WS_EX_LAYERED) != 0)
+                  + "  clickthrough=" + ((exStyle & WS_EX_TRANSPARENT) != 0));
             BeginInvoke(new MethodInvoker(StartLoop));
         }
 
@@ -374,9 +374,9 @@ namespace BubbleScr
                     if (frameIdx % 180 == 0)
                         Dbg.W("alive  frames=" + frameIdx + "  avg=" + (sw.Elapsed.TotalMilliseconds / frameIdx).ToString("F2") + "ms");
                 }
-                catch (Exception ex)
+                catch (Exception err)
                 {
-                    Dbg.W("LOOP FAILED at frame " + frameIdx + ": " + ex);
+                    Dbg.W("LOOP FAILED at frame " + frameIdx + ": " + err);
                     break;
                 }
             }
@@ -1236,7 +1236,7 @@ namespace BubbleScr
                 }
                 Dbg.W("startup=" + on);
             }
-            catch (Exception ex) { Dbg.W("startup set failed: " + ex.Message); }
+            catch (Exception err) { Dbg.W("startup set failed: " + err.Message); }
         }
 
         /* ---------- 闲置监视 ---------- */
@@ -1281,9 +1281,9 @@ namespace BubbleScr
                 };
                 ov.Show();
             }
-            catch (Exception ex)
+            catch (Exception err)
             {
-                Dbg.W("start overlay failed: " + ex);
+                Dbg.W("start overlay failed: " + err);
                 ov = null;
                 try { watch.Start(); } catch { }
             }
@@ -1342,9 +1342,9 @@ namespace BubbleScr
                     Application.Run(new TrayHost());
                 }
             }
-            catch (Exception ex)
+            catch (Exception err)
             {
-                Dbg.W("FATAL: " + ex);
+                Dbg.W("FATAL: " + err);
             }
             Dbg.W("exit");
         }
